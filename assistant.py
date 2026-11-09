@@ -232,7 +232,7 @@ def chat_log_summary(phone: str) -> str:
     sums = db.query("SELECT created_at, summary FROM call_summaries WHERE caller_number=$1 "
                     "ORDER BY created_at DESC LIMIT 3", [phone])
     if sums:
-        parts = [f"On {say_time(_ts(s['created_at']))}: {s['summary']}" for s in sums]
+        parts = [f"{say_time(_ts(s['created_at'])).capitalize()}: {s['summary']}" for s in sums]
         return "Here are your last conversations. " + " ".join(parts)
     turns = db.query("SELECT role, content, created_at FROM chat_logs WHERE caller_phone=$1 "
                      "AND role='user' AND content <> '[passcode entered]' ORDER BY created_at DESC LIMIT 5",
