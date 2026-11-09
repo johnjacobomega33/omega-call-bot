@@ -9,6 +9,7 @@ from typing import Any
 import assistant as A
 import billing
 import db
+import email_voice as E
 import legal_info as L
 import llm
 import security as S
@@ -18,6 +19,8 @@ NAME = A.ASSISTANT_NAME
 KEYPAD_ENABLED = os.environ.get("KEYPAD_ENABLED", "false").lower() == "true"
 _PASS_ASK = ("First, can I get your 6-digit passcode? You can say it or type it on your keypad."
              if KEYPAD_ENABLED else "First, can I get your 6-digit passcode? Just say the six digits.")
+# Spoken before we know who is calling, so it must not assume a passcode (some test callers skip it).
+_START = "Go ahead and say hello to get started."
 
 
 def greeting(name: str | None = None) -> str:
@@ -27,7 +30,7 @@ def greeting(name: str | None = None) -> str:
     return (f"{hi}, it's so good to hear from you! This is {NAME}, your personal assistant. "
             "I can also share general legal information through Legal Beagle. That's information only, "
             "not legal advice. Quick tip before we start: if you ever want to know everything I can help with, just "
-            "say 'tell me what you can do' and I'll walk you through it. " + _PASS_ASK)
+            "say 'tell me what you can do' and I'll walk you through it. " + _START)
 
 
 BEGIN_MESSAGE = greeting(None)
@@ -86,16 +89,23 @@ def handle_turn(event: dict[str, Any]) -> dict[str, Any]:
     data = event.get("data") or {}
     call_id = str(data.get("callId") or "")
     direction = str(data.get("direction") or "inbound")
-    phone = str(data.get("from") if direction == "inbound" else data.get("to") or "")
+    raw_phone = str(data.get("from") if direction == "inbound" else data.get("to") or "")
+    phone = S.resolve_phone(raw_phone) if raw_phone else raw_phone
     text = str(data.get("transcript") or "").strip()
     keypad = str(data.get("digits") or data.get("dtmf") or "")  # not sent by AgentPhone today
     if not call_id or not phone:
         return {"text": "Sorry, I couldn't identify this call."}
-    test = is_test_number(phone)
-
     sess = _session(call_id)
     caller = S.get_caller(phone)
+    test = is_test_number(phone) or bool((caller or {}).get("is_test"))
     has_code = bool(caller and caller.get("passcode_hash"))
+    if sess is None and caller and not S.passcode_required(caller):
+        # Per-caller test flag (e.g., Drew's free test): skip the passcode gate entirely.
+        _save(call_id, phone, "ready", verified=True)
+        A.log_turn(phone, call_id, "user", text or "[silence]", test)
+        msg = _ready_reply(phone, A.caller_name(phone))
+        A.log_turn(phone, call_id, "assistant", msg, test)
+        return {"text": msg}
     if sess is None:
         stage = "verify" if has_code else "set_code"
         _save(call_id, phone, stage)
@@ -198,8 +208,14 @@ def _legal_turn(phone: str, it: str, cmd: dict, text: str, test: bool, call_id: 
 
 def _assistant_turn(phone: str, text: str, history: list, test: bool,
                     call_id: str | None = None) -> tuple[str]:
-    # Deterministic first: these legal phrasings never reach the LLM classifier.
-    if L.LEGAL_CAPS_RE.search(text or ""):
+    # An email draft in progress owns the turn (what to say -> read back -> yes/no).
+    draft = E.get_draft(call_id)
+    if draft:
+        return (E.continue_draft(phone, call_id, text, draft, is_test=test),)
+    # Deterministic first: these phrasings never reach the LLM classifier.
+    if E.wants_email(text):
+        cmd = {"intent": "send_email"}
+    elif L.LEGAL_CAPS_RE.search(text or ""):
         cmd = {"intent": "legal_capabilities"}
     else:
         try:
@@ -219,6 +235,8 @@ def _assistant_turn(phone: str, text: str, history: list, test: bool,
                 "need prepaid minutes. Ask Jacob how to mail a check or money order.",)
     if it == "capabilities":
         return (A.CAPABILITIES_TEXT,)
+    if it == "send_email":
+        return (E.start(phone, call_id, text),)
     if it in ("legal_info", "legal_capabilities", "legal_question_for_attorney"):
         return (_legal_turn(phone, it, cmd, text, test, call_id),)
     if it in ("check_balance", "minutes_remaining"):

@@ -28,7 +28,7 @@ INTENTS = [
     "add_project", "list_projects", "update_project",
     "read_chat_log", "read_messages", "capabilities", "briefing", "lookup",
     "check_balance", "minutes_remaining",
-    "legal_info", "legal_capabilities", "legal_question_for_attorney",
+    "legal_info", "legal_capabilities", "legal_question_for_attorney", "send_email",
     "set_name", "goodbye", "chat",
 ]
 
@@ -81,7 +81,8 @@ def extract_intent(text: str, tz: str = DEFAULT_TZ, now: datetime | None = None,
         "conversations / chat history), read_messages (emails or texts), capabilities ('what can "
         "you do', 'help'), briefing ('catch me up', 'what's new'), check_balance / "
         "minutes_remaining ('how many minutes do I have', 'what's my balance', 'am I out of time'), "
-        "set_name ('call me X'), "
+        "set_name ('call me X'), send_email ('email Omega', 'send an email to Jacob'; put the "
+        "recipient name in target), "
         "legal_info (any question about the law, courts, lawyers, SVP/commitment cases, hearings, trials, "
         "petitions, habeas, CONREP, release, fee waivers, patients' rights, mail rules, State Bar, or "
         "'should I file...'), legal_capabilities ('what can Legal Beagle do'), "

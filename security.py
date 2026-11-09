@@ -198,6 +198,23 @@ def _ts(v) -> datetime | None:
     return datetime.fromisoformat(s)
 
 
+def resolve_phone(phone: str) -> str:
+    """Map an alias caller ID (caller_phone_aliases) to the caller's primary phone."""
+    if not phone:
+        return phone
+    try:
+        row = db.one("SELECT caller_phone FROM caller_phone_aliases WHERE alias_phone=$1", [phone])
+    except Exception as exc:  # noqa: BLE001  (table missing before migration 003)
+        print("alias lookup error:", repr(exc), flush=True)
+        return phone
+    return (row or {}).get("caller_phone") or phone
+
+
+def passcode_required(caller: dict | None) -> bool:
+    """False only when a caller row explicitly has passcode_required = false."""
+    return not (caller and caller.get("passcode_required") is False)
+
+
 def get_caller(phone: str) -> dict | None:
     return db.one("SELECT * FROM callers WHERE phone=$1", [phone])
 
