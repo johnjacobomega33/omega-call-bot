@@ -74,7 +74,7 @@ class Base(unittest.TestCase):
         self.db.sessions["c1"] = {"call_id": "c1", "caller_phone": DREW, "stage": "ready", "verified": True}
 
     def tearDown(self):
-        for x in self.p:
+        for x in reversed(self.p):
             x.stop()
 
     def _fake_post(self, inbox, payload):

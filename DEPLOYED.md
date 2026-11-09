@@ -118,3 +118,28 @@ Groundwork only. **Not** on Render. **Not** on Neon production (`main` / `br-win
 2. Attorney review of the `legal_info.py` text (keeps it within B&P 6400(d)(2), "written or approved by an attorney").
 3. Gemini no-training tier, since the free tier may use prompts. Also decide whether legal turns stay in `chat_logs`, which currently store the caller's words.
 4. Pricing: normal minutes vs. a free can/can't statement and referrals.
+
+## LIVE: free test run for Drew, Nov 9, 2026 ~3:50 PM PT (Jacob approved 3:34 PM PT: "Ok let's see what we can do for free")
+- **main** now includes pixie-groundwork (7913449), legal-beagle-info (24f17e3), and the test-run commit (a4b156b), plus test-isolation fixes. Render auto-deploys from main.
+- **Neon production** (`br-winter-flower-bfkaq2dl`):
+  - Backup branch `backup-pre-pixie-2026-11-09` (`br-dawn-silence-bf5sz9ul`, no compute) was taken first.
+  - Applied migrations 002 and 003 (additive only: CREATE/ADD COLUMN IF NOT EXISTS) and seeded 30 units. Production had 0 rows before this.
+- **Drew's test caller:**
+  - Phone `+15599341564` (Unit 11 outgoing #1). The other 7 Unit 11 numbers are in `caller_phone_aliases`. The DSH list is from 2016.
+  - name Drew, full_name `Andrew "Drew" Ortega`, email andrew.ortega@omegamadeit.com, unit Unit 11.
+  - `is_test=true`, `passcode_required=false` (no passcode hash).
+  - Credited +60 minutes as a `bonus`, reference "FREE TEST CREDIT".
+- **Unknown numbers** get the normal new-caller passcode setup and 0 minutes. That means calendar and lists are soft-blocked, but chat, capabilities, and the Legal Beagle can/can't statement still work. To link a new number Drew uses: `INSERT INTO caller_phone_aliases (alias_phone, caller_phone, source) VALUES ('+1…','+15599341564','seen on test call')`. If a stray callers row was created for that number, delete it first.
+- **AgentPhone:**
+  - Per-agent webhook created for agent cmw8mtv1k9fddy5wjbbb7155w: `https://omega-call-bot.onrender.com/voice`, timeout 60 s (to absorb cold start), id cmw9wnoiyx755pr0u1dy6ay4y.
+  - The project default webhook is UNCHANGED (`https://agentphone-webhook.onrender.com/webhook`). Before this change the agent had no webhook of its own, so it used the project default.
+  - **Revert:** `DELETE /v1/agents/cmw8mtv1k9fddy5wjbbb7155w/webhook`. Events then fall back to the old project URL.
+  - Snapshots: secrets/webhook_project_before_2026-11-09.json, secrets/agent_before_2026-11-09.json.
+  - Agent beginMessage updated to the new greeting, which ends with "Go ahead and say hello to get started." The old text is in agent_before_….json.
+- **Render env:** `AGENTPHONE_WEBHOOK_SECRET` is now the agent-webhook secret (secrets/agentphone_agent_webhook_secret.txt). Added `AGENTMAIL_API_KEY`.
+- **Voice email** (`email_voice.py`):
+  - Recipients are hard-locked to Omega/Jacob (johnjacobomega33@gmail.com), sent from the caller's own @omegamadeit.com AgentMail inbox.
+  - Subject "Message from Drew via Pixie". Read back first, yes to send.
+  - 5 per day, every attempt logged in `email_log`. No real email was sent during testing.
+- **Not done (would cost money):** no keep-alive pinger, no 10DLC, no paid plans, no top-up.
+- **Cold start:** measured 22.5 s for GET /health after idle, then about 0.3 s.

@@ -122,15 +122,14 @@ class CallFlow(unittest.TestCase):
     def setUp(self):
         self.fake = FakeLog()
         self.patches = [
-            mock.patch.object(voice.db, "one", side_effect=self.fake.one),
-            mock.patch.object(A.db, "one", side_effect=self.fake.one),
+            mock.patch.object(voice.db, "one", side_effect=self.fake.one),  # same module object as A.db
             mock.patch.object(voice.billing, "get_balance", return_value=30),
         ]
         for p in self.patches:
             p.start()
 
     def tearDown(self):
-        for p in self.patches:
+        for p in reversed(self.patches):
             p.stop()
 
     def turn(self, text, intent, title="", call_id="call-1"):
