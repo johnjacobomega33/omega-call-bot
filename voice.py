@@ -81,7 +81,7 @@ def _ready_reply(phone: str, name: str | None) -> str:
                    "until a check or money order tops you up. ")
     elif gate["warn"] and gate.get("speech"):
         bal_bit = f" Quick note: {gate['speech']} "
-    return f"{hello}{bal_bit}{A.briefing(phone)} So, how can I help you today?"
+    return f"{hello} {bal_bit.strip()} {A.briefing(phone)} So, how can I help you today?".replace("  ", " ")
 
 
 def handle_turn(event: dict[str, Any]) -> dict[str, Any]:

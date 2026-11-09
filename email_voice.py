@@ -131,7 +131,7 @@ def start(phone: str, call_id: str | None, text: str) -> str:
     name = recipient_name(text)
     if name and name not in ALLOWLIST:
         return ("Sorry, sending email to other people isn't available yet. Right now I can only email "
-                "Omega. Want me to email Omega instead?")
+                "Omega. Just say 'email Omega' if you'd like to.")
     if _sent_today(phone) >= DAILY_LIMIT:
         return "You've reached today's email limit for this test. Try again tomorrow."
     if not _sender(phone)[0]:
