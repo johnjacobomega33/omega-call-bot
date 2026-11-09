@@ -1,0 +1,30 @@
+name: reminders
+# Free scheduler: GitHub-hosted runner (free for public repos) checks Neon for due
+# reminders every 10 minutes. It talks to Neon/AgentPhone directly, so it never wakes
+# the Render free web service and doesn't burn its free instance hours.
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch: {}
+concurrency: reminders
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install tzdata
+      - name: Run due reminders
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          AGENTPHONE_API_KEY: ${{ secrets.AGENTPHONE_API_KEY }}
+          AGENTPHONE_AGENT_ID: cmw8mtv1k9fddy5wjbbb7155w
+          AGENTPHONE_NUMBER_ID: cmw8mqsrh9dkby5wjz1fuxcnu
+          ASSISTANT_NAME: ${{ vars.ASSISTANT_NAME || 'Pixie' }}
+          # stays dry-run unless the repo variable REMINDER_DRY_RUN is set to exactly "false"
+          REMINDER_DRY_RUN: ${{ vars.REMINDER_DRY_RUN || 'true' }}
+          REMINDER_ALLOWED_NUMBERS: ${{ vars.REMINDER_ALLOWED_NUMBERS || '' }}
+        run: python reminders.py
