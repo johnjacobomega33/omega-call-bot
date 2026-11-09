@@ -28,6 +28,7 @@ INTENTS = [
     "add_project", "list_projects", "update_project",
     "read_chat_log", "read_messages", "capabilities", "briefing", "lookup",
     "check_balance", "minutes_remaining",
+    "legal_info", "legal_capabilities", "legal_question_for_attorney",
     "set_name", "goodbye", "chat",
 ]
 
@@ -53,7 +54,9 @@ INTENT_SCHEMA = {
 CAPABILITIES_TEXT = (
     "I can save appointments and call you with reminders, read you your schedule, keep your "
     "to-do list, go over your messages, help you finish projects, look things up, tell you how "
-    "many prepaid minutes you have left, and keep a private log of our chats. Talk time is "
+    "many prepaid minutes you have left, keep a private log of our chats, and, through Legal Beagle, "
+    "give general legal information about commitment cases and court forms. That's information only, "
+    "not legal advice. Talk time is "
     "ten dollars an hour, prepaid. What sounds good?"
 )
 
@@ -79,6 +82,11 @@ def extract_intent(text: str, tz: str = DEFAULT_TZ, now: datetime | None = None,
         "you do', 'help'), briefing ('catch me up', 'what's new'), check_balance / "
         "minutes_remaining ('how many minutes do I have', 'what's my balance', 'am I out of time'), "
         "set_name ('call me X'), "
+        "legal_info (any question about the law, courts, lawyers, SVP/commitment cases, hearings, trials, "
+        "petitions, habeas, CONREP, release, fee waivers, patients' rights, mail rules, State Bar, or "
+        "'should I file...'), legal_capabilities ('what can Legal Beagle do'), "
+        "legal_question_for_attorney ('save a question for my lawyer', 'add that to my questions for my "
+        "attorney'; put the question itself in title), "
         "lookup (look something up / current facts / web search; put the search query in title), goodbye, chat (anything else). Use empty strings for unused fields (project_status 'none')."
     )
     contents = llm.history_to_contents((history or [])[-4:], text)

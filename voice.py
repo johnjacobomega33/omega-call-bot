@@ -9,6 +9,7 @@ from typing import Any
 import assistant as A
 import billing
 import db
+import legal_info as L
 import llm
 import security as S
 
@@ -24,7 +25,8 @@ def greeting(name: str | None = None) -> str:
     so the live beginMessage uses greeting(None); the name is used after verification."""
     hi = f"Hi {name}" if name else "Hi there"
     return (f"{hi}, it's so good to hear from you! This is {NAME}, your personal assistant. "
-            "Quick tip before we start: if you ever want to know everything I can help with, just "
+            "I can also share general legal information through Legal Beagle. That's information only, "
+            "not legal advice. Quick tip before we start: if you ever want to know everything I can help with, just "
             "say 'tell me what you can do' and I'll walk you through it. " + _PASS_ASK)
 
 
@@ -170,24 +172,55 @@ def handle_turn(event: dict[str, Any]) -> dict[str, Any]:
         return reply(LOCKOUT_TEXT, hangup=True)
 
     # ---- verified: assistant
-    out = _assistant_turn(phone, text, event.get("recentHistory") or [], test)
+    out = _assistant_turn(phone, text, event.get("recentHistory") or [], test, call_id=call_id)
     return reply(out[0], hangup=out[0].endswith("Goodbye!"))
 
 
-def _assistant_turn(phone: str, text: str, history: list, test: bool) -> tuple[str]:
-    try:
-        cmd = A.extract_intent(text, history=history)
-    except Exception as exc:  # noqa: BLE001
-        print("intent error:", exc, flush=True)
-        return ("Sorry, I had trouble with that. Could you say it again?",)
+def legal_intro_given(call_id: str | None) -> bool:
+    """True if Pixie already spoke the Legal Beagle can/can't statement on this call (chat_logs)."""
+    if not call_id:
+        return False
+    row = db.one("SELECT 1 AS x FROM chat_logs WHERE call_id=$1 AND role='assistant' "
+                 "AND position($2 in content) > 0 LIMIT 1", [call_id, L.CAN_CANT_MARK])
+    return bool(row)
+
+
+def _legal_turn(phone: str, it: str, cmd: dict, text: str, test: bool, call_id: str | None) -> str:
+    if it == "legal_capabilities":
+        return f"{L.CAN_CANT_TEXT} {L.PRIVACY}"
+    intro = "" if legal_intro_given(call_id) else L.CAN_CANT_TEXT + " "
+    if it == "legal_question_for_attorney":
+        row = A.add_todo(phone, L.question_for_attorney_title(cmd.get("title") or text), is_test=test)
+        return (f"{intro}Saved to your to-do list: {row['title']}. I won't send it to anyone. "
+                "Say 'read my to-do list' to hear your questions before you talk to your lawyer.")
+    return L.respond(text, intro_needed=bool(intro))
+
+
+def _assistant_turn(phone: str, text: str, history: list, test: bool,
+                    call_id: str | None = None) -> tuple[str]:
+    # Deterministic first: these legal phrasings never reach the LLM classifier.
+    if L.LEGAL_CAPS_RE.search(text or ""):
+        cmd = {"intent": "legal_capabilities"}
+    else:
+        try:
+            cmd = A.extract_intent(text, history=history)
+        except Exception as exc:  # noqa: BLE001
+            print("intent error:", exc, flush=True)
+            return ("Sorry, I had trouble with that. Could you say it again?",)
     it = cmd["intent"]
+    # Safety net: legal-sounding questions never go to free-form chat or web lookup.
+    if it in ("chat", "lookup") and L.looks_legal(text):
+        it = "legal_info"
     # Soft block: zero prepaid minutes — still allow balance check, goodbye, capabilities, chat.
     if billing.get_balance(phone) <= 0 and it not in (
-            "check_balance", "minutes_remaining", "capabilities", "goodbye", "chat", "briefing"):
+            "check_balance", "minutes_remaining", "capabilities", "legal_capabilities", "goodbye",
+            "chat", "briefing"):
         return (billing.balance_speech(phone) + " I can still chat briefly, but calendar and lists "
                 "need prepaid minutes. Ask Jacob how to mail a check or money order.",)
     if it == "capabilities":
         return (A.CAPABILITIES_TEXT,)
+    if it in ("legal_info", "legal_capabilities", "legal_question_for_attorney"):
+        return (_legal_turn(phone, it, cmd, text, test, call_id),)
     if it in ("check_balance", "minutes_remaining"):
         return (billing.balance_speech(phone),)
     if it == "briefing":
@@ -273,7 +306,8 @@ def _assistant_turn(phone: str, text: str, history: list, test: bool) -> tuple[s
     try:
         out = llm.generate(llm.history_to_contents(history[-6:], text),
                            f"You are {NAME}, a quirky, warm, light and friendly personal assistant (a secretary) on a phone call. "
-                           "Reply in 1-3 short spoken sentences. No lists or markdown.")
+                           "Reply in 1-3 short spoken sentences. No lists or markdown. Never explain law or give legal "
+                           "advice; for legal topics say 'Ask me about Legal Beagle' instead.")
     except Exception:  # noqa: BLE001
         out = "Sorry, I didn't catch that. Could you say it another way?"
     return (out,)

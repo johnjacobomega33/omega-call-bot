@@ -99,3 +99,22 @@ Groundwork only. **Not** on Render. **Not** on Neon production (`main` / `br-win
 3. Pick mailing address / payee / deposit workflow
 4. Confirm website placeholders (phone, email, address)
 5. Apply same migration to production Neon when ready (tonight: **dev branch only**)
+
+## Legal Beagle, information-only (branch `legal-beagle-info`, cut from `pixie-groundwork`). NOT deployed
+- Local branch only. Not pushed or merged, no DB migration, and no AgentPhone or Render change.
+- Code:
+  - `legal_info.py` holds the curated library (13 topics, all `attorney_review: pending`), the can/can't statement, the advice and contact redirects, and referrals.
+  - New intents: `legal_info`, `legal_capabilities`, `legal_question_for_attorney`.
+  - "What can Legal Beagle do?" is caught by regex before the LLM runs. Legal-sounding `chat`/`lookup` turns are rerouted to `legal_info`, so no LLM-written or web-search legal answers.
+- The can/can't statement is spoken on the first Legal Beagle turn of each call. That's tracked by finding it in `chat_logs` for the `call_id`, so no new column is needed. It repeats on request.
+- Questions for the lawyer are saved as `todos` titled "For my lawyer: ...". Pixie never sends them anywhere.
+- Billing: normal minutes. At zero balance the can/can't statement still plays, but the info topics are soft-blocked like other features.
+- Greeting (`beginMessage`) and `CAPABILITIES_TEXT` now mention Legal Beagle. **The live AgentPhone `beginMessage` is NOT updated.** That needs Jacob's yes.
+- Tests: `python3 -m unittest tests.test_unit tests.test_billing tests.test_legal`
+- Planning docs: `/workspace/legalbeagle/` (PLAN.md, infolibrary-outline.md, disclaimers.md, sources.md)
+
+### Needs Jacob's yes before any live use
+1. Merge and deploy, plus updating the AgentPhone `beginMessage`.
+2. Attorney review of the `legal_info.py` text (keeps it within B&P 6400(d)(2), "written or approved by an attorney").
+3. Gemini no-training tier, since the free tier may use prompts. Also decide whether legal turns stay in `chat_logs`, which currently store the caller's words.
+4. Pricing: normal minutes vs. a free can/can't statement and referrals.

@@ -37,3 +37,6 @@ Scheduled by a GitHub Actions workflow every 10 minutes (free on public repos); 
 Not deployed. See `migrations/002_pixie_groundwork.sql`, `billing.py`, and `/workspace/agentphone/docs/`.
 Rate: $10/hour ($1 = 6 minutes). Admin: `POST /api/admin/payments/log` (X-Bot-Key).
 Neon dev branch: `pixie-groundwork`. Do not merge to `main` until Jacob approves (main auto-deploys).
+
+## Legal Beagle, information-only (branch `legal-beagle-info`)
+See `legal_info.py` and DEPLOYED.md. Pixie reads general, sourced legal information and the names of official forms. It never gives advice on the caller's own case. Tests: `tests/test_legal.py`.
