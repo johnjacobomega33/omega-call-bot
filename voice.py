@@ -156,7 +156,8 @@ def handle_turn(event: dict[str, Any]) -> dict[str, Any]:
         return reply(LOCKOUT_TEXT, hangup=True)
 
     # ---- verified: assistant
-    return reply(*_assistant_turn(phone, text, event.get("recentHistory") or [], test))
+    out = _assistant_turn(phone, text, event.get("recentHistory") or [], test)
+    return reply(out[0], hangup=out[0].endswith("Goodbye!"))
 
 
 def _assistant_turn(phone: str, text: str, history: list, test: bool) -> tuple[str]:

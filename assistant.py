@@ -228,11 +228,15 @@ def log_turn(phone: str, call_id: str | None, role: str, content: str, is_test: 
              [phone, call_id, role, content[:4000], is_test])
 
 
+def _cap(s: str) -> str:
+    return s[:1].upper() + s[1:]
+
+
 def chat_log_summary(phone: str) -> str:
     sums = db.query("SELECT created_at, summary FROM call_summaries WHERE caller_number=$1 "
                     "ORDER BY created_at DESC LIMIT 3", [phone])
     if sums:
-        parts = [f"{say_time(_ts(s['created_at'])).capitalize()}: {s['summary']}" for s in sums]
+        parts = [f"{_cap(say_time(_ts(s['created_at'])))}: {s['summary']}" for s in sums]
         return "Here are your last conversations. " + " ".join(parts)
     turns = db.query("SELECT role, content, created_at FROM chat_logs WHERE caller_phone=$1 "
                      "AND role='user' AND content <> '[passcode entered]' ORDER BY created_at DESC LIMIT 5",
