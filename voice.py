@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 import assistant as A
+import billing
 import db
 import llm
 import security as S
@@ -45,9 +46,15 @@ def _session(call_id: str) -> dict | None:
 
 def _save(call_id: str, phone: str, stage: str, verified: bool = False,
           pending_hash: str | None = None) -> None:
+    # When first verified, stamp billable_started_at for prepaid minute deduction at hangup.
     db.query(
-        "INSERT INTO call_sessions (call_id,caller_phone,stage,verified,pending_hash) VALUES ($1,$2,$3,$4,$5) "
-        "ON CONFLICT (call_id) DO UPDATE SET stage=$3, verified=$4, pending_hash=$5, updated_at=now()",
+        "INSERT INTO call_sessions (call_id,caller_phone,stage,verified,pending_hash,"
+        "verified_at,billable_started_at) VALUES ($1,$2,$3,$4,$5,"
+        "CASE WHEN $4 THEN now() ELSE NULL END, CASE WHEN $4 THEN now() ELSE NULL END) "
+        "ON CONFLICT (call_id) DO UPDATE SET stage=$3, verified=$4, pending_hash=$5, updated_at=now(), "
+        "verified_at=COALESCE(call_sessions.verified_at, CASE WHEN $4 THEN now() ELSE NULL END), "
+        "billable_started_at=COALESCE(call_sessions.billable_started_at, "
+        "CASE WHEN $4 THEN now() ELSE NULL END)",
         [call_id, phone, stage, verified, pending_hash])
 
 
@@ -62,7 +69,14 @@ def _first_name(text: str) -> str:
 
 def _ready_reply(phone: str, name: str | None) -> str:
     hello = f"Perfect, thank you{', ' + name if name else ''}! Here's what's going on today."
-    return f"{hello} {A.briefing(phone)} So, how can I help you today?"
+    gate = billing.gate_for_call(phone)
+    bal_bit = ""
+    if gate["zero"]:
+        bal_bit = (" Quick note: you have no prepaid minutes left, so this call may be cut short "
+                   "until a check or money order tops you up. ")
+    elif gate["warn"] and gate.get("speech"):
+        bal_bit = f" Quick note: {gate['speech']} "
+    return f"{hello}{bal_bit}{A.briefing(phone)} So, how can I help you today?"
 
 
 def handle_turn(event: dict[str, Any]) -> dict[str, Any]:
@@ -167,8 +181,15 @@ def _assistant_turn(phone: str, text: str, history: list, test: bool) -> tuple[s
         print("intent error:", exc, flush=True)
         return ("Sorry, I had trouble with that. Could you say it again?",)
     it = cmd["intent"]
+    # Soft block: zero prepaid minutes — still allow balance check, goodbye, capabilities, chat.
+    if billing.get_balance(phone) <= 0 and it not in (
+            "check_balance", "minutes_remaining", "capabilities", "goodbye", "chat", "briefing"):
+        return (billing.balance_speech(phone) + " I can still chat briefly, but calendar and lists "
+                "need prepaid minutes. Ask Jacob how to mail a check or money order.",)
     if it == "capabilities":
         return (A.CAPABILITIES_TEXT,)
+    if it in ("check_balance", "minutes_remaining"):
+        return (billing.balance_speech(phone),)
     if it == "briefing":
         return (A.briefing(phone) + " Anything else?",)
     if it == "goodbye":
@@ -264,6 +285,22 @@ def handle_call_ended(event: dict[str, Any]) -> None:
     if not call_id:
         return
     sess = _session(call_id)
+    phone = (sess or {}).get("caller_phone") or ""
+    # Prepaid deduction before deleting the session
+    if sess and sess.get("verified") and phone:
+        started = sess.get("billable_started_at") or sess.get("verified_at") or sess.get("created_at")
+        try:
+            from datetime import datetime, timezone
+            if started:
+                s = str(started).replace(" ", "T", 1)
+                if len(s) >= 3 and (s[-3] == "+" or s[-3] == "-") and ":" not in s[-5:]:
+                    pass
+                started_dt = datetime.fromisoformat(s.replace("Z", "+00:00") if s.endswith("Z") else s)
+                mins = billing.estimate_call_minutes(started_dt)
+                if mins > 0:
+                    billing.deduct_call_minutes(phone, mins, call_id=call_id)
+        except Exception as exc:  # noqa: BLE001
+            print("billing deduct error:", repr(exc), flush=True)
     db.query("DELETE FROM call_sessions WHERE call_id=$1", [call_id])
     if not sess or not sess.get("verified"):
         return

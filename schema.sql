@@ -101,3 +101,77 @@ CREATE TABLE IF NOT EXISTS inbox_items (
   is_test      boolean NOT NULL DEFAULT false
 );
 CREATE INDEX IF NOT EXISTS inbox_items_caller_idx ON inbox_items (caller_phone, is_read, received_at DESC);
+
+-- -----------------------------------------------------------------
+-- Pixie groundwork (units, minutes ledger, payments, contacts)
+-- Also in migrations/002_pixie_groundwork.sql for incremental apply.
+-- Rate: $10/hour => $1 = 6 minutes.
+-- -----------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS units (
+  code            text PRIMARY KEY,
+  display_name    text NOT NULL,
+  notes           text,
+  incoming_e164   text[] NOT NULL DEFAULT '{}',
+  outgoing_e164   text[] NOT NULL DEFAULT '{}',
+  incoming_raw    text,
+  outgoing_raw    text,
+  directory_source text NOT NULL DEFAULT 'DSH Coalinga patient phone list',
+  directory_date  date,
+  directory_saved_at timestamptz,
+  created_at      timestamptz NOT NULL DEFAULT now(),
+  updated_at      timestamptz NOT NULL DEFAULT now()
+);
+
+ALTER TABLE callers ADD COLUMN IF NOT EXISTS unit text REFERENCES units(code);
+ALTER TABLE callers ADD COLUMN IF NOT EXISTS minutes_balance integer NOT NULL DEFAULT 0;
+CREATE INDEX IF NOT EXISTS callers_unit_idx ON callers (unit);
+
+CREATE TABLE IF NOT EXISTS minute_transactions (
+  id              bigserial PRIMARY KEY,
+  caller_phone    text NOT NULL REFERENCES callers(phone) ON DELETE CASCADE,
+  delta_minutes   integer NOT NULL,
+  reason          text NOT NULL
+                  CHECK (reason IN ('payment','call_usage','adjustment','bonus','refund')),
+  reference       text,
+  created_by      text NOT NULL DEFAULT 'system',
+  balance_after   integer,
+  created_at      timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS minute_tx_caller_idx ON minute_transactions (caller_phone, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS payments (
+  id                bigserial PRIMARY KEY,
+  caller_phone      text NOT NULL REFERENCES callers(phone) ON DELETE CASCADE,
+  method            text NOT NULL
+                    CHECK (method IN ('check','money_order','card','other')),
+  amount_cents      integer NOT NULL CHECK (amount_cents > 0),
+  check_or_mo_number text,
+  payer_name        text,
+  received_date     date NOT NULL DEFAULT (CURRENT_DATE),
+  status            text NOT NULL DEFAULT 'received'
+                    CHECK (status IN ('received','deposited','bounced','refunded','void')),
+  minutes_credited  integer NOT NULL DEFAULT 0,
+  minute_tx_id      bigint REFERENCES minute_transactions(id),
+  notes             text,
+  logged_by         text NOT NULL DEFAULT 'jacob',
+  created_at        timestamptz NOT NULL DEFAULT now(),
+  updated_at        timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS payments_caller_idx ON payments (caller_phone, created_at DESC);
+CREATE INDEX IF NOT EXISTS payments_status_idx ON payments (status);
+
+CREATE TABLE IF NOT EXISTS contacts (
+  id              bigserial PRIMARY KEY,
+  caller_phone    text NOT NULL REFERENCES callers(phone) ON DELETE CASCADE,
+  name            text NOT NULL,
+  phone           text,
+  relationship    text,
+  notes           text,
+  is_test         boolean NOT NULL DEFAULT false,
+  created_at      timestamptz NOT NULL DEFAULT now(),
+  updated_at      timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS contacts_caller_idx ON contacts (caller_phone, name);
+
+ALTER TABLE call_sessions ADD COLUMN IF NOT EXISTS verified_at timestamptz;
+ALTER TABLE call_sessions ADD COLUMN IF NOT EXISTS billable_started_at timestamptz;

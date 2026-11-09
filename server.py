@@ -11,6 +11,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
 
 import assistant as A
+import billing
 import db
 import llm
 import reminders
@@ -174,6 +175,96 @@ def api_inbox(b):
     return {"stub": True, "items": A.unread_inbox(phone, 20)}
 
 
+# ------------------------------------------------------------------ Admin (Jacob / BOT_API_KEY)
+def api_admin_payment_log(b):
+    """Log a mailed check / money order / card payment and credit minutes. Jacob-only via bot key."""
+    phone = _phone(b)
+    try:
+        amount = int(b.get("amount_cents") or 0)
+    except (TypeError, ValueError):
+        raise Bad(400, {"error": "amount_cents must be an integer"})
+    method = str(b.get("method") or "").strip().lower()
+    if not method:
+        raise Bad(400, {"error": "method required (check|money_order|card|other)"})
+    try:
+        return billing.log_payment(
+            phone,
+            method=method,
+            amount_cents=amount,
+            check_or_mo_number=(str(b["check_or_mo_number"]).strip() if b.get("check_or_mo_number") else None),
+            payer_name=(str(b["payer_name"]).strip() if b.get("payer_name") else None),
+            received_date=b.get("received_date"),
+            notes=(str(b["notes"]) if b.get("notes") else None),
+            logged_by=str(b.get("logged_by") or "jacob"),
+            credit_now=bool(b.get("credit_now", True)),
+            is_test=voice.is_test_number(phone),
+            unit=(str(b["unit"]) if b.get("unit") else None),
+        )
+    except ValueError as exc:
+        raise Bad(400, {"error": str(exc)}) from exc
+
+
+def api_admin_payment_status(b):
+    try:
+        pid = int(b.get("payment_id") or 0)
+    except (TypeError, ValueError):
+        raise Bad(400, {"error": "payment_id required"})
+    status = str(b.get("status") or "").strip()
+    try:
+        return billing.mark_payment_status(
+            pid, status,
+            logged_by=str(b.get("logged_by") or "jacob"),
+            notes=(str(b["notes"]) if b.get("notes") else None),
+        )
+    except ValueError as exc:
+        raise Bad(400, {"error": str(exc)}) from exc
+
+
+def api_admin_adjust_minutes(b):
+    phone = _phone(b)
+    try:
+        delta = int(b.get("delta_minutes"))
+    except (TypeError, ValueError):
+        raise Bad(400, {"error": "delta_minutes required (int)"})
+    try:
+        return billing.adjust_minutes(
+            phone, delta,
+            reason=str(b.get("reason") or "adjustment"),
+            notes=(str(b["notes"]) if b.get("notes") else None),
+            created_by=str(b.get("logged_by") or "jacob"),
+        )
+    except ValueError as exc:
+        raise Bad(400, {"error": str(exc)}) from exc
+
+
+def api_admin_callers_by_unit(b):
+    unit = str(b.get("unit") or "").strip()
+    if not unit:
+        raise Bad(400, {"error": "unit required, e.g. 'Unit 11'"})
+    return {"unit": unit, "callers": billing.list_callers_by_unit(unit)}
+
+
+def api_admin_set_unit(b):
+    phone = _phone(b)
+    unit = str(b.get("unit") or "").strip()
+    try:
+        return {"caller": billing.set_caller_unit(phone, unit)}
+    except ValueError as exc:
+        raise Bad(400, {"error": str(exc)}) from exc
+
+
+def api_admin_units(_b):
+    return {"units": billing.list_units()}
+
+
+def api_balance(b):
+    """Caller-facing balance (still gated by passcode like other personal APIs)."""
+    phone = _gate(b)
+    return {"phone": phone, "minutes_balance": billing.get_balance(phone),
+            "spoken": billing.balance_speech(phone)}
+
+
+
 ROUTES = {
     "/api/passcode/set": api_passcode_set,
     "/api/passcode/verify": api_passcode_verify,
@@ -190,7 +281,15 @@ ROUTES = {
     "/api/briefing": api_briefing,
     "/api/chatlog": api_chatlog,
     "/api/inbox": api_inbox,
+    "/api/balance": api_balance,
     "/api/reminders/run": lambda b: reminders.run_due(),
+    # Admin (Jacob): still require X-Bot-Key; no passcode — bot key is the gate
+    "/api/admin/payments/log": api_admin_payment_log,
+    "/api/admin/payments/status": api_admin_payment_status,
+    "/api/admin/minutes/adjust": api_admin_adjust_minutes,
+    "/api/admin/callers/by-unit": api_admin_callers_by_unit,
+    "/api/admin/callers/set-unit": api_admin_set_unit,
+    "/api/admin/units": api_admin_units,
 }
 
 

@@ -30,3 +30,10 @@ Scheduled by a GitHub Actions workflow every 10 minutes (free on public repos); 
 
 ## Dev
 `python migrate.py` (schema.sql) · `python -m unittest tests.test_unit` · live: `tests.test_live` with `DATABASE_URL`, `GEMINI_API_KEY`.
+
+
+## Prepaid minutes / units (feature branch `pixie-groundwork`)
+
+Not deployed. See `migrations/002_pixie_groundwork.sql`, `billing.py`, and `/workspace/agentphone/docs/`.
+Rate: $10/hour ($1 = 6 minutes). Admin: `POST /api/admin/payments/log` (X-Bot-Key).
+Neon dev branch: `pixie-groundwork`. Do not merge to `main` until Jacob approves (main auto-deploys).

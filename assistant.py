@@ -27,6 +27,7 @@ INTENTS = [
     "add_todo", "list_todos", "complete_todo",
     "add_project", "list_projects", "update_project",
     "read_chat_log", "read_messages", "capabilities", "briefing", "lookup",
+    "check_balance", "minutes_remaining",
     "set_name", "goodbye", "chat",
 ]
 
@@ -51,8 +52,9 @@ INTENT_SCHEMA = {
 
 CAPABILITIES_TEXT = (
     "I can save appointments and call you with reminders, read you your schedule, keep your "
-    "to-do list, go over your messages, help you finish projects, look things up, and keep a "
-    "private log of our chats. What sounds good?"
+    "to-do list, go over your messages, help you finish projects, look things up, tell you how "
+    "many prepaid minutes you have left, and keep a private log of our chats. Talk time is "
+    "ten dollars an hour, prepaid. What sounds good?"
 )
 
 
@@ -74,7 +76,9 @@ def extract_intent(text: str, tz: str = DEFAULT_TZ, now: datetime | None = None,
         "add_todo, list_todos, complete_todo ('I finished X', 'check off X'), add_project, "
         "list_projects, update_project (status change or next step), read_chat_log (past "
         "conversations / chat history), read_messages (emails or texts), capabilities ('what can "
-        "you do', 'help'), briefing ('catch me up', 'what's new'), set_name ('call me X'), "
+        "you do', 'help'), briefing ('catch me up', 'what's new'), check_balance / "
+        "minutes_remaining ('how many minutes do I have', 'what's my balance', 'am I out of time'), "
+        "set_name ('call me X'), "
         "lookup (look something up / current facts / web search; put the search query in title), goodbye, chat (anything else). Use empty strings for unused fields (project_status 'none')."
     )
     contents = llm.history_to_contents((history or [])[-4:], text)
